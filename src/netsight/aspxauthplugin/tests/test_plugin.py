@@ -28,7 +28,6 @@ class TestExample(unittest.TestCase):
         cookie = plugin.encryptCookie(version, start_time, end_time, username)
         sig, data = plugin.decodeCookie(cookie)
         data = plugin.decryptData(data)
-        import pdb; pdb.set_trace()
 
         self.assertEqual(plugin.unpackData(data), (version, start_time, end_time, username))
 
