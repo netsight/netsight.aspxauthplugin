@@ -4,6 +4,10 @@ from Crypto.Cipher import AES
 import hmac
 import struct
 import time
+import codecs
+from cStringIO import StringIO
+from random import randrange
+from Crypto import Random
 
 from Products.PluggableAuthService.plugins.BasePlugin import BasePlugin
 from AccessControl.SecurityInfo import ClassSecurityInfo
@@ -17,6 +21,43 @@ from App.class_init import default__class_init__ as InitializeClass
 from Products.PluggableAuthService.utils import classImplements
 
 
+def ReadFormsAuthTicketStringV3(f):
+    chars = ord(f.read(1))
+    reader = codecs.getreader('utf-16le')
+    r = reader(f)
+    return r.read(chars)
+
+def WriteFormsAuthTicketStringV3(f, s):
+    l = len(s)
+    f.write(chr(l))
+    f.write(s.encode('utf-16le'))
+
+def ReadFormsAuthTicketStringV2(f):
+    reader = codecs.getreader('utf-16le')
+    result = ""
+    r = reader(f)
+    while 1:
+        c = r.read(1)
+        if c == '\x00' or c is None:
+            return result
+        else:
+            result = result + c
+
+def WriteFormsAuthTicketStringV2(f, s):
+    s = s + '\x00'
+    f.write(s.encode('utf-16le'))
+
+
+
+ReadFormsAuthTicketString = ReadFormsAuthTicketStringV3
+WriteFormsAuthTicketString = WriteFormsAuthTicketStringV3
+
+def tounixtime(t):
+    return (t - 621355968000000000) / 10000000
+
+def towintime(t):
+    return (t*10000000) + 621355968000000000
+
 class ASPXAuthPlugin( BasePlugin ):
     """ASPXAuth Plugin.
 
@@ -26,7 +67,6 @@ class ASPXAuthPlugin( BasePlugin ):
     security = ClassSecurityInfo()
 
     signatureLength = hmac.new(key='',digestmod=sha1).digest_size
-    salt = "0000000000000000"
 
     _properties = (
             {
@@ -61,31 +101,70 @@ class ASPXAuthPlugin( BasePlugin ):
         return validationAlgorithm.digest()
 
     def decryptData(self, data):
-        decryptionAlgorithm = AES.new(b16decode(self.decryption_key), AES.MODE_CBC, self.salt)
-        decryptedBytes =  decryptionAlgorithm.decrypt(data)
-        stream = decryptedBytes[32:]
-        if ord(stream[0]) == 1:
-            return stream
+        iv = Random.new().read(AES.block_size)
+        decryptionAlgorithm = AES.new(b16decode(self.decryption_key), AES.MODE_CBC, iv)
+        decryptedBytes = decryptionAlgorithm.decrypt(data)
+        preamblelen = len(self.decryption_key) / 2
+        stream = decryptedBytes[preamblelen:]
+        return stream
 
     def encryptData(self, data):
-        encryptionAlgorithm = AES.new(b16decode(self.decryption_key), AES.MODE_CBC, self.salt)
+        preamblelen = len(self.decryption_key) / 2
+        preamble = Random.new().read(preamblelen)
+        data = preamble+data
+        iv = Random.new().read(AES.block_size)
+        encryptionAlgorithm = AES.new(b16decode(self.decryption_key), AES.MODE_CBC, iv)
         l = len(data)
-        r = l % 32
+        block_size = encryptionAlgorithm.block_size
+        r = l % block_size
         if r == 0:
             numpad = 0
         else:
-            numpad = 32 - r
-        data = '\0' * 16 + data + '\n' * numpad
+            numpad = block_size - r
+        data = data + '\n' * numpad
 
-        encryptedBytes =  encryptionAlgorithm.encrypt(data)
-        return self.salt + encryptedBytes
+        encryptedBytes = encryptionAlgorithm.encrypt(data)
+        return encryptedBytes
 
-    def unpackData(self, data):
-        version = int(ord(data[1]))
-        start_time = (struct.unpack("Q", data[2:2+8])[0] - 621355968000000000) / 10000000
-        end_time = (struct.unpack("Q", data[2+8+1:2+8+8+1])[0] - 621355968000000000) / 10000000
-        username = (data[2+8+8+1+2:].split('\x00\x00')[0]+'\0').decode('utf16')
-        return (version, start_time, end_time, username)
+    def unpackDataV3(self, data):
+
+        stream = StringIO(data)
+#        stream.read(8) # 8 bytes of random at start
+        if stream.read(1) != '\x01':
+            return
+        version = int(ord(stream.read(1)))
+        start_time = tounixtime(struct.unpack("Q", stream.read(8))[0])
+        if stream.read(1) != '\xFE':
+            return
+        end_time = tounixtime(struct.unpack("Q", stream.read(8))[0])
+        persistent = int(ord(stream.read(1)))
+
+        username = ReadFormsAuthTicketString(stream)
+        userdata = ReadFormsAuthTicketString(stream)
+        path = ReadFormsAuthTicketString(stream)
+        
+        if stream.read(1) != '\xFF':
+            return
+
+        return (start_time, end_time, username, version, persistent, userdata, path)
+
+    def unpackDataV2(self, data):
+        stream = StringIO(data)
+        stream.read(8) # 8 bytes of random at start
+        version = int(ord(stream.read(1)))
+        username = ReadFormsAuthTicketString(stream)
+        start_time = tounixtime(struct.unpack("Q", stream.read(8))[0])
+        persistent = int(ord(stream.read(1)))
+        end_time = tounixtime(struct.unpack("Q", stream.read(8))[0])
+        userdata = ReadFormsAuthTicketString(stream)
+        path = ReadFormsAuthTicketString(stream)
+        
+        if stream.read(1) != '\x00':
+            return
+
+        return (start_time, end_time, username, version, persistent, userdata, path)
+
+    unpackData = unpackDataV3
 
     def decodeCookie(self, cookie):
         cookie_bytes = b16decode(cookie)
@@ -97,15 +176,46 @@ class ASPXAuthPlugin( BasePlugin ):
         cookie_bytes = data + sig
         return b16encode(cookie_bytes)
 
-    def packData(self, version, start_time, end_time, username):
-        data = struct.pack("<BBQBQ", 1, version, (start_time*10000000) + 621355968000000000, 254, (end_time*10000000) + 621355968000000000)
-        data = data + '\0' + '\x14' + ('%s' % username).encode('utf-16le') + '\0'
-        return data
+    def packDataV3(self, start_time, end_time, username, version=None, persistent=None, userdata=None, path=None):
+        if version is None:
+            version = 2
+        if persistent is None:
+            persistent = 0
+        if userdata is None:
+            userdata = ''
+        if path is None:
+            path = '/'
+        data = StringIO()
+#        data.write(''.join([ chr(randrange(0,255)) for x in xrange(8) ]))
+        data.write('\x01') # start marker
+        data.write(chr(version)) # version number
+        data.write(struct.pack("<Q", towintime(start_time))) # start time
+        data.write('\xFE') # marker
+        data.write(struct.pack("<Q", towintime(end_time))) # end time 
+        data.write(chr(persistent)) # persistent
+        WriteFormsAuthTicketString(data, username)
+        WriteFormsAuthTicketString(data, userdata)
+        WriteFormsAuthTicketString(data, path)
+        data.write('\xFF')
 
-    def encryptCookie(self, version, start_time, end_time, username):
-        data = self.packData(version, start_time, end_time, username)
-        data = data[:-1]
-        data = data + '\x01/\x00\xff\xfa\xaa"\xb0\x93n\xdft\xa9\x94\xb6\xb3%**\x1aW5\xc0b'
+        value = data.getvalue()
+        sig = self.signData(value)
+        value = value + sig
+        l = len(value)
+        block_size = 24
+        r = l % block_size
+        if r == 0:
+            numpad = 0
+        else:
+            numpad = block_size - r
+        value = value + chr(numpad) * numpad
+
+        return value
+
+    packData = packDataV3
+
+    def encryptCookie(self, start_time, end_time, username, version=None, persistent=None, userdata=None, path=None):
+        data = self.packData(start_time, end_time, username, version, persistent, userdata, path)
         data = self.encryptData(data)
         sig = self.signData(data)
         cookie = self.encodeCookie(data, sig)
@@ -123,9 +233,6 @@ class ASPXAuthPlugin( BasePlugin ):
         if not cookie:
             return None
 
-        #validation_key = """07B6387D1DED6BF193EDD726B4ADFD6B92EDA470DDF639D4B78110CA797DCED426BECF322B9FBCC5E7C3FDA2E7BA28169611B1ACD1E7F063ABF17ECDC30AD482"""
-        #decryption_key = """CFE45C8F9D17D68B71DAB98158E1F78E5AC05D6C5A7184BD1BF26E6E36FA5973"""
-
         sig, data = self.decodeCookie(cookie)
 
         if not self.checkSignature(data,sig):
@@ -135,7 +242,10 @@ class ASPXAuthPlugin( BasePlugin ):
         if not decryptedBytes:
             return None
         
-        version, start_time, end_time, username = self.unpackData(decryptedBytes)        
+        unpacked = self.unpackData(decryptedBytes)
+        if unpacked is None:
+            return None
+        start_time, end_time, username, version, persistent, userdata, path = unpacked
 
         # Check the cookie time still valid
         t = time.time()
@@ -156,11 +266,10 @@ class ASPXAuthPlugin( BasePlugin ):
         return creds
 
     def updateCredentials(self, request, response, login, new_password):
-        version = 2
         start_time = int(time.time())
         end_time = int(start_time + (60 * 20) )
 
-        cookie = self.encryptCookie(version, start_time, end_time, login)
+        cookie = self.encryptCookie(start_time, end_time, login)
         
         response.setCookie('.ASPXAUTH', cookie, quoted=False, path='/', domain='.vitaeplone.netsightdev.co.uk')
 
