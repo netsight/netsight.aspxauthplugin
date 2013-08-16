@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import os
 
-version = '1.0'
+version = '0.9'
 
 long_description = (
     open('README.txt').read()
@@ -49,6 +49,6 @@ setup(name='netsight.aspxauthplugin',
       [z3c.autoinclude.plugin]
       target = plone
       """,
-      setup_requires=["PasteScript"],
-      paster_plugins=["templer.localcommands"],
+      setup_requires=[],
+      paster_plugins=[],
       )
