@@ -224,6 +224,13 @@ class ASPXAuthPlugin( BasePlugin ):
     security.declarePrivate( 'authenticateCredentials' )
     def authenticateCredentials( self, credentials ):
 
+        request = self.REQUEST
+        # if we already authenticated
+        if request.get("AUTHENTICATED_USER", None) is not None:
+            uuid = request.AUTHENTICATED_USER.getName()
+            # return uuid, username ??? where is username ?
+            return uuid, uuid
+
         # We only authenticate when our challenge mechanism extracted
         # the cookie
         if credentials.get('plugin') != self.getId():
@@ -250,6 +257,11 @@ class ASPXAuthPlugin( BasePlugin ):
         # Check the cookie time still valid
         t = time.time()
         if 1 or t > start_time and t < end_time and version == 2:
+            from zope.event import notify
+            from vitae.content.events import UserNeededEvent
+
+            notify(UserNeededEvent(self, username))
+
             return username, username        
 
     security.declarePrivate( 'extractCredentials' )
