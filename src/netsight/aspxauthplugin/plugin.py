@@ -5,6 +5,7 @@ import hmac
 import struct
 import time
 import codecs
+import re
 from cStringIO import StringIO
 from random import randrange
 from Crypto import Random
@@ -20,6 +21,8 @@ from Products.PluggableAuthService.interfaces.plugins import \
 from App.class_init import default__class_init__ as InitializeClass
 from Products.PluggableAuthService.utils import classImplements
 
+from zope.event import notify
+from vitae.content.events import UserNeededEvent
 
 def ReadFormsAuthTicketStringV3(f):
     chars = ord(f.read(1))
@@ -225,6 +228,7 @@ class ASPXAuthPlugin( BasePlugin ):
     def authenticateCredentials( self, credentials ):
 
         request = self.REQUEST
+        response = request.RESPONSE
         # if we already authenticated
         if request.get("AUTHENTICATED_USER", None) is not None:
             uuid = request.AUTHENTICATED_USER.getName()
@@ -256,12 +260,16 @@ class ASPXAuthPlugin( BasePlugin ):
 
         # Check the cookie time still valid
         t = time.time()
-        if 1 or t > start_time and t < end_time and version == 2:
-            from zope.event import notify
-            from vitae.content.events import UserNeededEvent
+        if t > start_time and t < end_time and version == 2:
 
-            notify(UserNeededEvent(self, username))
+            # update the cookie if we are past halfway of lifetime
+            if t > start_time + ((end_time - start_time)/2):
+                self.updateCredentials(request, response, username, None)
 
+            if not request.cookies.get('username'):
+                notify(UserNeededEvent(self, username))
+                response.setCookie('username', username, quoted=False, path='/', domain='.vitaeplone.netsightdev.co.uk')
+                request.cookies['username'] = username # so we see it on this request also
             return username, username        
 
     security.declarePrivate( 'extractCredentials' )
@@ -278,6 +286,10 @@ class ASPXAuthPlugin( BasePlugin ):
         return creds
 
     def updateCredentials(self, request, response, login, new_password):
+        # another plugin tries to call this with email address (login) rather then uuid, so ignore
+        if not re.match(r'^.{8}-.{4}-.{4}-.{4}-.{12}$', login):
+            return 
+
         start_time = int(time.time())
         end_time = int(start_time + (60 * 20) )
 
@@ -288,6 +300,7 @@ class ASPXAuthPlugin( BasePlugin ):
     def resetCredentials(self, request, response):
         """ Raise unauthorized to tell browser to clear credentials. """
         response.expireCookie('.ASPXAUTH', path='/', domain='.vitaeplone.netsightdev.co.uk')        
+        response.expireCookie('username', path='/', domain='.vitaeplone.netsightdev.co.uk')
 
 
 classImplements(ASPXAuthPlugin,
