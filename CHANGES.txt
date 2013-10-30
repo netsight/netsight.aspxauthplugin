@@ -1,15 +1,16 @@
 Changelog
 =========
 
-1.0 (2013-08-31)
---------------------
+1.0.1 (2013-10-30)
+------------------
+- Read the cookie domain from a buildout environment variable
 
+1.0 (2013-08-31)
+----------------
 - Added an addition cookie 'username' to signal we have notified we need to create user
 - Ignore calls to updateCredentials with something not a uuid.
 - General cleanup
 
-
 0.9 (2013-08-16)
---------------------
-
+----------------
 - First release for testing
