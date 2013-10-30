@@ -24,6 +24,12 @@ from Products.PluggableAuthService.utils import classImplements
 from zope.event import notify
 from vitae.content.events import UserNeededEvent
 
+from App.config import getConfiguration
+config = getConfiguration()
+env = getattr(config, 'environment', {})
+COOKIE_DOMAIN = env.get('COOKIE_DOMAIN', '')
+
+
 def ReadFormsAuthTicketStringV3(f):
     chars = ord(f.read(1))
     reader = codecs.getreader('utf-16le')
@@ -268,9 +274,9 @@ class ASPXAuthPlugin( BasePlugin ):
 
             if not request.cookies.get('username'):
                 notify(UserNeededEvent(self, username))
-                response.setCookie('username', username, quoted=False, path='/', domain='.vitaeplone.netsightdev.co.uk')
+                response.setCookie('username', username, quoted=False, path='/', domain=COOKIE_DOMAIN)
                 request.cookies['username'] = username # so we see it on this request also
-            return username, username        
+            return username, username
 
     security.declarePrivate( 'extractCredentials' )
     def extractCredentials( self, request ):
@@ -288,19 +294,19 @@ class ASPXAuthPlugin( BasePlugin ):
     def updateCredentials(self, request, response, login, new_password):
         # another plugin tries to call this with email address (login) rather then uuid, so ignore
         if not re.match(r'^.{8}-.{4}-.{4}-.{4}-.{12}$', login):
-            return 
+            return
 
         start_time = int(time.time())
         end_time = int(start_time + (60 * 20) )
 
         cookie = self.encryptCookie(start_time, end_time, login)
-        
-        response.setCookie('.ASPXAUTH', cookie, quoted=False, path='/', domain='.vitaeplone.netsightdev.co.uk')
+
+        response.setCookie('.ASPXAUTH', cookie, quoted=False, path='/', domain=COOKIE_DOMAIN)
 
     def resetCredentials(self, request, response):
         """ Raise unauthorized to tell browser to clear credentials. """
-        response.expireCookie('.ASPXAUTH', path='/', domain='.vitaeplone.netsightdev.co.uk')        
-        response.expireCookie('username', path='/', domain='.vitaeplone.netsightdev.co.uk')
+        response.expireCookie('.ASPXAUTH', path='/', domain=COOKIE_DOMAIN)
+        response.expireCookie('username', path='/', domain=COOKIE_DOMAIN)
 
 
 classImplements(ASPXAuthPlugin,
