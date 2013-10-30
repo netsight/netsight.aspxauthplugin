@@ -36,10 +36,12 @@ def ReadFormsAuthTicketStringV3(f):
     r = reader(f)
     return r.read(chars)
 
+
 def WriteFormsAuthTicketStringV3(f, s):
     l = len(s)
     f.write(chr(l))
     f.write(s.encode('utf-16le'))
+
 
 def ReadFormsAuthTicketStringV2(f):
     reader = codecs.getreader('utf-16le')
@@ -52,22 +54,25 @@ def ReadFormsAuthTicketStringV2(f):
         else:
             result = result + c
 
+
 def WriteFormsAuthTicketStringV2(f, s):
     s = s + '\x00'
     f.write(s.encode('utf-16le'))
 
 
-
 ReadFormsAuthTicketString = ReadFormsAuthTicketStringV3
 WriteFormsAuthTicketString = WriteFormsAuthTicketStringV3
+
 
 def tounixtime(t):
     return (t - 621355968000000000) / 10000000
 
-def towintime(t):
-    return (t*10000000) + 621355968000000000
 
-class ASPXAuthPlugin( BasePlugin ):
+def towintime(t):
+    return (t * 10000000) + 621355968000000000
+
+
+class ASPXAuthPlugin(BasePlugin):
     """ASPXAuth Plugin.
 
     """
@@ -75,7 +80,7 @@ class ASPXAuthPlugin( BasePlugin ):
     meta_type = 'ASPXAuth Plugin'
     security = ClassSecurityInfo()
 
-    signatureLength = hmac.new(key='',digestmod=sha1).digest_size
+    signatureLength = hmac.new(key='', digestmod=sha1).digest_size
 
     _properties = (
             {
@@ -93,13 +98,11 @@ class ASPXAuthPlugin( BasePlugin ):
             )
 
     #cookie = """31EBBD78D6F27972394A513A161AD0362E7906830460CE7D3F44E47B2F1AF63DD43E02EB22259E4AF342B232768D6701C9395AF42448E5D149FE8AE2E4D355E9F43A9B60E1A30C0282F9ED470D8037F3B9D1D965293BED7C6156672527A94B22F24039C3F7CA6ECFF6D50A0BFFB38C0E03FF9644092FB5F8FD6E6292AA7A49B5FF603456DE4EA041F785CC163A92C34937FDE017"""
-
-    def __init__( self, id, title=None ):
+    def __init__(self, id, title=None):
         self._setId(id)
         self.title = title
         self.validation_key = ''
         self.decryption_key = ''
-
 
     def checkSignature(self, data, sig):
         return sig == self.signData(data)
@@ -120,7 +123,7 @@ class ASPXAuthPlugin( BasePlugin ):
     def encryptData(self, data):
         preamblelen = len(self.decryption_key) / 2
         preamble = Random.new().read(preamblelen)
-        data = preamble+data
+        data = preamble + data
         iv = Random.new().read(AES.block_size)
         encryptionAlgorithm = AES.new(b16decode(self.decryption_key), AES.MODE_CBC, iv)
         l = len(data)
@@ -151,7 +154,7 @@ class ASPXAuthPlugin( BasePlugin ):
         username = ReadFormsAuthTicketString(stream)
         userdata = ReadFormsAuthTicketString(stream)
         path = ReadFormsAuthTicketString(stream)
-        
+
         if stream.read(1) != '\xFF':
             return
 
@@ -159,7 +162,7 @@ class ASPXAuthPlugin( BasePlugin ):
 
     def unpackDataV2(self, data):
         stream = StringIO(data)
-        stream.read(8) # 8 bytes of random at start
+        stream.read(8)  # 8 bytes of random at start
         version = int(ord(stream.read(1)))
         username = ReadFormsAuthTicketString(stream)
         start_time = tounixtime(struct.unpack("Q", stream.read(8))[0])
@@ -167,7 +170,7 @@ class ASPXAuthPlugin( BasePlugin ):
         end_time = tounixtime(struct.unpack("Q", stream.read(8))[0])
         userdata = ReadFormsAuthTicketString(stream)
         path = ReadFormsAuthTicketString(stream)
-        
+
         if stream.read(1) != '\x00':
             return
 
@@ -196,12 +199,12 @@ class ASPXAuthPlugin( BasePlugin ):
             path = '/'
         data = StringIO()
 #        data.write(''.join([ chr(randrange(0,255)) for x in xrange(8) ]))
-        data.write('\x01') # start marker
-        data.write(chr(version)) # version number
-        data.write(struct.pack("<Q", towintime(start_time))) # start time
-        data.write('\xFE') # marker
-        data.write(struct.pack("<Q", towintime(end_time))) # end time 
-        data.write(chr(persistent)) # persistent
+        data.write('\x01')  # start marker
+        data.write(chr(version))  # version number
+        data.write(struct.pack("<Q", towintime(start_time)))  # start time
+        data.write('\xFE')  # marker
+        data.write(struct.pack("<Q", towintime(end_time)))  # end time
+        data.write(chr(persistent))  # persistent
         WriteFormsAuthTicketString(data, username)
         WriteFormsAuthTicketString(data, userdata)
         WriteFormsAuthTicketString(data, path)
@@ -230,8 +233,8 @@ class ASPXAuthPlugin( BasePlugin ):
         cookie = self.encodeCookie(data, sig)
         return cookie
 
-    security.declarePrivate( 'authenticateCredentials' )
-    def authenticateCredentials( self, credentials ):
+    security.declarePrivate('authenticateCredentials')
+    def authenticateCredentials(self, credentials):
 
         request = self.REQUEST
         response = request.RESPONSE
@@ -252,13 +255,13 @@ class ASPXAuthPlugin( BasePlugin ):
 
         sig, data = self.decodeCookie(cookie)
 
-        if not self.checkSignature(data,sig):
+        if not self.checkSignature(data, sig):
             return None
 
         decryptedBytes = self.decryptData(data)
         if not decryptedBytes:
             return None
-        
+
         unpacked = self.unpackData(decryptedBytes)
         if unpacked is None:
             return None
@@ -269,17 +272,17 @@ class ASPXAuthPlugin( BasePlugin ):
         if t > start_time and t < end_time and version == 2:
 
             # update the cookie if we are past halfway of lifetime
-            if t > start_time + ((end_time - start_time)/2):
+            if t > start_time + ((end_time - start_time) / 2):
                 self.updateCredentials(request, response, username, None)
 
             if not request.cookies.get('username'):
                 notify(UserNeededEvent(self, username))
                 response.setCookie('username', username, quoted=False, path='/', domain=COOKIE_DOMAIN)
-                request.cookies['username'] = username # so we see it on this request also
+                request.cookies['username'] = username  # so we see it on this request also
             return username, username
 
-    security.declarePrivate( 'extractCredentials' )
-    def extractCredentials( self, request ):
+    security.declarePrivate('extractCredentials')
+    def extractCredentials(self, request):
 
         """ Extract final auth credentials from 'request'.
         """
@@ -297,7 +300,7 @@ class ASPXAuthPlugin( BasePlugin ):
             return
 
         start_time = int(time.time())
-        end_time = int(start_time + (60 * 20) )
+        end_time = int(start_time + (60 * 20))
 
         cookie = self.encryptCookie(start_time, end_time, login)
 
@@ -315,7 +318,4 @@ classImplements(ASPXAuthPlugin,
                 ICredentialsUpdatePlugin,
                 ICredentialsResetPlugin)
 
-InitializeClass( ASPXAuthPlugin )
-
-
-
+InitializeClass(ASPXAuthPlugin)
