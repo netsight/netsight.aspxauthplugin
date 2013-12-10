@@ -28,7 +28,7 @@ from App.config import getConfiguration
 config = getConfiguration()
 env = getattr(config, 'environment', {})
 COOKIE_DOMAIN = env.get('COOKIE_DOMAIN', '')
-
+COOKIE_TTL = int(env.get('COOKIE_TTL', '20'))
 
 def ReadFormsAuthTicketStringV3(f):
     chars = ord(f.read(1))
@@ -300,7 +300,7 @@ class ASPXAuthPlugin(BasePlugin):
             return
 
         start_time = int(time.time())
-        end_time = int(start_time + (60 * 20))
+        end_time = int(start_time + (60 * COOKIE_TTL))
 
         cookie = self.encryptCookie(start_time, end_time, login)
 
