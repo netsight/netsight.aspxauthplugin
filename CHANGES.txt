@@ -1,6 +1,10 @@
 Changelog
 =========
 
+1.0.2 (2013-12-10)
+------------------
+- Read the cookie TTL from a buildout environment variable
+
 1.0.1 (2013-10-30)
 ------------------
 - Read the cookie domain from a buildout environment variable
