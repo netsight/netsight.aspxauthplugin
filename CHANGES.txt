@@ -4,6 +4,7 @@ Changelog
 1.0.3 (2014-02-25)
 ------------------
 - Added in a 5 minute leeway on accepting the start time on tickets, to deal with clock skew
+- Refactored tests to use PloneTestCase. Mocked time so we can check timestamps on cookies
 
 1.0.2 (2013-12-10)
 ------------------
