@@ -1,6 +1,10 @@
 Changelog
 =========
 
+1.0.3 (2014-02-25)
+------------------
+- Added in a 5 minute leeway on accepting the start time on tickets, to deal with clock skew
+
 1.0.2 (2013-12-10)
 ------------------
 - Read the cookie TTL from a buildout environment variable
