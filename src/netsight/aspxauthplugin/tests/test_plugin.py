@@ -1,15 +1,51 @@
 import unittest2 as unittest
 import time
-from netsight.aspxauthplugin.plugin import ASPXAuthPlugin, ReadFormsAuthTicketString, WriteFormsAuthTicketString
 from cStringIO import StringIO
+
+from zope.component import testing
+from Testing import ZopeTestCase
+from Products.Five import zcml
+
+from netsight.aspxauthplugin.plugin import ASPXAuthPlugin, ReadFormsAuthTicketString, WriteFormsAuthTicketString
+import netsight.aspxauthplugin
 
 #from netsight.aspxauthplugin.testing import \
 #    NETSIGHT_ASPXAUTHPLUGIN_INTEGRATION_TESTING
 
+SANDBOX_ID = 'sandbox'
 
-class TestExample(unittest.TestCase):
+class PASLayer:
+    @classmethod
+    def setUp( cls ):
+        testing.setUp()
 
-#    layer = NETSIGHT_ASPXAUTHPLUGIN_INTEGRATION_TESTING
+        app = ZopeTestCase.app()
+
+        # Create our sandbox
+        app.manage_addFolder(SANDBOX_ID)
+        sandbox = app[SANDBOX_ID]
+
+        factory = sandbox.manage_addProduct['PluggableAuthService']
+        factory.addPluggableAuthService(REQUEST=None)
+        
+        pas = sandbox.acl_users
+        netsight.aspxauthplugin.install.manage_add_aspxauthplugin(pas, 'aspxauth')
+
+        # need to monkey patch in a response object into the right place
+        pas.aspxauth.REQUEST.RESPONSE = pas.aspxauth.REQUEST.response
+        cls.pas = pas
+
+    @classmethod
+    def tearDown(cls):
+        testing.tearDown()
+        app = ZopeTestCase.app()
+#        app.manage_delObjects(SANDBOX_ID)
+#        transaction.commit()
+        ZopeTestCase.close(app)
+
+class TestASPXAuth(ZopeTestCase.ZopeTestCase):
+
+    layer = PASLayer
 
     def setUp(self):
         # you'll want to use this to set up anything you need for your tests
@@ -41,7 +77,7 @@ class TestExample(unittest.TestCase):
         self.assertEqual(f.read(), data)
 
     def test_unpack_data(self):
-        plugin = ASPXAuthPlugin('aspxauth')
+        plugin = self.layer.pas.aspxauth
         plugin.validation_key = """C50B3C89CB21F4F1422FF158A5B42D0E8DB8CB5CDA1742572A487D9401E3400267682B202B746511891C1BAF47F8D25C07F6C39A104696DB51F17C529AD3CABE"""
         plugin.decryption_key = """8A9BE8FD67AF6979E7D20198CFEA50DD3D3799C77AF2B72F"""
 
@@ -53,7 +89,7 @@ class TestExample(unittest.TestCase):
 
 
     def test_repack_cookie(self):
-        plugin = ASPXAuthPlugin('aspxauth')
+        plugin = self.layer.pas.aspxauth
         plugin.validation_key = """07B6387D1DED6BF193EDD726B4ADFD6B92EDA470DDF639D4B78110CA797DCED426BECF322B9FBCC5E7C3FDA2E7BA28169611B1ACD1E7F063ABF17ECDC30AD482"""
         plugin.decryption_key = """CFE45C8F9D17D68B71DAB98158E1F78E5AC05D6C5A7184BD1BF26E6E36FA5973"""
 
@@ -72,7 +108,7 @@ class TestExample(unittest.TestCase):
 
 
     def test_rebuild_cookie(self):
-        plugin = ASPXAuthPlugin('aspxauth')
+        plugin = self.layer.pas.aspxauth
         plugin.validation_key = """07B6387D1DED6BF193EDD726B4ADFD6B92EDA470DDF639D4B78110CA797DCED426BECF322B9FBCC5E7C3FDA2E7BA28169611B1ACD1E7F063ABF17ECDC30AD482"""
         plugin.decryption_key = """CFE45C8F9D17D68B71DAB98158E1F78E5AC05D6C5A7184BD1BF26E6E36FA5973"""
 
@@ -92,7 +128,12 @@ class TestExample(unittest.TestCase):
 
 
     def test_auth_pass1(self):
-        plugin = ASPXAuthPlugin('aspxauth')
+        from netsight.aspxauthplugin import plugin
+        def mytime():
+            return 1372414992
+        plugin.time_time = mytime
+
+        plugin = self.layer.pas.aspxauth
         plugin.validation_key = """07B6387D1DED6BF193EDD726B4ADFD6B92EDA470DDF639D4B78110CA797DCED426BECF322B9FBCC5E7C3FDA2E7BA28169611B1ACD1E7F063ABF17ECDC30AD482"""
         plugin.decryption_key = """CFE45C8F9D17D68B71DAB98158E1F78E5AC05D6C5A7184BD1BF26E6E36FA5973"""
 
@@ -100,15 +141,34 @@ class TestExample(unittest.TestCase):
         self.assertEqual(plugin.authenticateCredentials({'cookie': cookie, 'plugin': plugin.getId()}), ('matth@netsight.co.uk', 'matth@netsight.co.uk'))
 
     def test_auth_pass2(self):
-        plugin = ASPXAuthPlugin('aspxauth')
+        from netsight.aspxauthplugin import plugin
+        def mytime():
+            return 1372332734
+        plugin.time_time = mytime
+
+        plugin = self.layer.pas.aspxauth
         plugin.validation_key = """C50B3C89CB21F4F1422FF158A5B42D0E8DB8CB5CDA1742572A487D9401E3400267682B202B746511891C1BAF47F8D25C07F6C39A104696DB51F17C529AD3CABE"""
         plugin.decryption_key = """8A9BE8FD67AF6979E7D20198CFEA50DD3D3799C77AF2B72F"""
 
         cookie = """75DC73A5006682E1436110A45FFD840D8F6DD9807A132D0AEB1281C229D37502EDD60D518C9FECB73E3869F457BB43230566F26716DEB27FC98AE76A0318C64077D191D2FD5CCB87982648E7050BB049A622D25857D87B84DFFF6492941A9C07CE8118A714D9587E7B436500A93B8788C1979AC989DF0471A1A60D22EA903FF1A5E27956DC678E57C7CE299893D9BFFB7651AA9BB97E7BED9B0511EE6F79906B09F2BB84"""
         self.assertEqual(plugin.authenticateCredentials({'cookie': cookie, 'plugin': plugin.getId()}), ('aafc752c-8247-4f44-938c-a1ea00be2070', 'aafc752c-8247-4f44-938c-a1ea00be2070'))
 
+
+    def test_auth_pass2_expiredcookie(self):
+        from netsight.aspxauthplugin import plugin
+        def mytime():
+            return 1372336334
+        plugin.time_time = mytime
+
+        plugin = self.layer.pas.aspxauth
+        plugin.validation_key = """C50B3C89CB21F4F1422FF158A5B42D0E8DB8CB5CDA1742572A487D9401E3400267682B202B746511891C1BAF47F8D25C07F6C39A104696DB51F17C529AD3CABE"""
+        plugin.decryption_key = """8A9BE8FD67AF6979E7D20198CFEA50DD3D3799C77AF2B72F"""
+
+        cookie = """75DC73A5006682E1436110A45FFD840D8F6DD9807A132D0AEB1281C229D37502EDD60D518C9FECB73E3869F457BB43230566F26716DEB27FC98AE76A0318C64077D191D2FD5CCB87982648E7050BB049A622D25857D87B84DFFF6492941A9C07CE8118A714D9587E7B436500A93B8788C1979AC989DF0471A1A60D22EA903FF1A5E27956DC678E57C7CE299893D9BFFB7651AA9BB97E7BED9B0511EE6F79906B09F2BB84"""
+        self.assertEqual(plugin.authenticateCredentials({'cookie': cookie, 'plugin': plugin.getId()}), None)
+
     def test_auth_fail_badcookie(self):
-        plugin = ASPXAuthPlugin('aspxauth')
+        plugin = self.layer.pas.aspxauth
         plugin.validation_key = """07B6387D1DED6BF193EDD726B4ADFD6B92EDA470DDF639D4B78110CA797DCED426BECF322B9FBCC5E7C3FDA2E7BA28169611B1ACD1E7F063ABF17ECDC30AD482"""
         plugin.decryption_key = """CFE45C8F9D17D68B71DAB98158E1F78E5AC05D6C5A7184BD1BF26E6E36FA5973"""
 
@@ -117,7 +177,7 @@ class TestExample(unittest.TestCase):
         self.assertEqual(plugin.authenticateCredentials({'cookie': cookie, 'plugin': plugin.getId()}), None)
 
     def test_crypto_fail_validation_key(self):
-        plugin = ASPXAuthPlugin('aspxauth')
+        plugin = self.layer.pas.aspxauth
         plugin.validation_key = """07B6387D1DED6BF193EDD726B4ADFD6B92EDA470DDF639D4B78110CA797DCED426BECF322B9FBCC5E7C3FDA2E7BA28169611B1ACD1E7F063ABF17ECDC30AD483"""
         plugin.decryption_key = """CFE45C8F9D17D68B71DAB98158E1F78E5AC05D6C5A7184BD1BF26E6E36FA5973"""
 
@@ -126,7 +186,7 @@ class TestExample(unittest.TestCase):
         self.assertEqual(plugin.authenticateCredentials({'cookie': cookie, 'plugin': plugin.getId()}), None)
 
     def test_crypto_fail_decryption_key(self):
-        plugin = ASPXAuthPlugin('aspxauth')
+        plugin = self.layer.pas.aspxauth
         plugin.validation_key = """07B6387D1DED6BF193EDD726B4ADFD6B92EDA470DDF639D4B78110CA797DCED426BECF322B9FBCC5E7C3FDA2E7BA28169611B1ACD1E7F063ABF17ECDC30AD482"""
         plugin.decryption_key = """CFE45C8F9D17D68B71DAB98158E1F78E5AC05D6C5A7184BD1BF26E6E36FA5972"""
 

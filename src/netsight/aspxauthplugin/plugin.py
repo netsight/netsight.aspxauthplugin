@@ -7,7 +7,6 @@ import time
 import codecs
 import re
 from cStringIO import StringIO
-from random import randrange
 from Crypto import Random
 
 from Products.PluggableAuthService.plugins.BasePlugin import BasePlugin
@@ -22,13 +21,21 @@ from App.class_init import default__class_init__ as InitializeClass
 from Products.PluggableAuthService.utils import classImplements
 
 from zope.event import notify
-from vitae.content.events import UserNeededEvent
+try:
+    from vitae.content.events import UserNeededEvent
+    VITAE = True
+except ImportError:
+    VITAE = False
 
 from App.config import getConfiguration
 config = getConfiguration()
 env = getattr(config, 'environment', {})
 COOKIE_DOMAIN = env.get('COOKIE_DOMAIN', '')
 COOKIE_TTL = int(env.get('COOKIE_TTL', '20'))
+
+# so we can override for testing
+def time_time():
+    return time.time()
 
 def ReadFormsAuthTicketStringV3(f):
     chars = ord(f.read(1))
@@ -198,7 +205,6 @@ class ASPXAuthPlugin(BasePlugin):
         if path is None:
             path = '/'
         data = StringIO()
-#        data.write(''.join([ chr(randrange(0,255)) for x in xrange(8) ]))
         data.write('\x01')  # start marker
         data.write(chr(version))  # version number
         data.write(struct.pack("<Q", towintime(start_time)))  # start time
@@ -268,7 +274,7 @@ class ASPXAuthPlugin(BasePlugin):
         start_time, end_time, username, version, persistent, userdata, path = unpacked
 
         # Check the cookie time still valid
-        t = time.time()
+        t = time_time()
         if t > (start_time - 300) and t < end_time and version == 2:
 
             # update the cookie if we are past halfway of lifetime
@@ -276,7 +282,8 @@ class ASPXAuthPlugin(BasePlugin):
                 self.updateCredentials(request, response, username, None)
 
             if not request.cookies.get('username'):
-                notify(UserNeededEvent(self, username))
+                if VITAE:
+                    notify(UserNeededEvent(self, username))
                 response.setCookie('username', username, quoted=False, path='/', domain=COOKIE_DOMAIN)
                 request.cookies['username'] = username  # so we see it on this request also
             return username, username
@@ -299,7 +306,7 @@ class ASPXAuthPlugin(BasePlugin):
         if not re.match(r'^.{8}-.{4}-.{4}-.{4}-.{12}$', login):
             return
 
-        start_time = int(time.time())
+        start_time = int(time_time())
         end_time = int(start_time + (60 * COOKIE_TTL))
 
         cookie = self.encryptCookie(start_time, end_time, login)
