@@ -269,7 +269,7 @@ class ASPXAuthPlugin(BasePlugin):
 
         # Check the cookie time still valid
         t = time.time()
-        if t > start_time and t < end_time and version == 2:
+        if t > (start_time - 300) and t < end_time and version == 2:
 
             # update the cookie if we are past halfway of lifetime
             if t > start_time + ((end_time - start_time) / 2):
