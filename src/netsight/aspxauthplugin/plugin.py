@@ -32,6 +32,10 @@ config = getConfiguration()
 env = getattr(config, 'environment', {})
 COOKIE_DOMAIN = env.get('COOKIE_DOMAIN', '')
 COOKIE_TTL = int(env.get('COOKIE_TTL', '20'))
+# Look for this on the request and persist the cookie if it is set
+PERSIST_COOKIE = env.get('PERSIST_COOKIE', 'remember_me')
+# Persistent cookie expires in one year
+PERSIST_TTL = int(env.get('PERSIST_TTL', '365')) * 24 * 60 * 60
 
 # so we can override for testing
 def time_time():
