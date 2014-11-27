@@ -283,7 +283,9 @@ class ASPXAuthPlugin(BasePlugin):
 
             # update the cookie if we are past halfway of lifetime
             if t > start_time + ((end_time - start_time) / 2):
-                self.updateCredentials(request, response, username, None)
+                # Don't update a persistent cookie - let it expire naturally
+                if not persistent:
+                    self.updateCredentials(request, response, username, None)
 
             if not request.cookies.get('username'):
                 if VITAE:
@@ -310,12 +312,29 @@ class ASPXAuthPlugin(BasePlugin):
         if not re.match(r'^.{8}-.{4}-.{4}-.{4}-.{12}$', login):
             return
 
+        # Set the cookie options
+        options = {
+            'quoted': False,
+            'path': '/',
+            'domain': COOKIE_DOMAIN,
+        }
+
         start_time = int(time_time())
-        end_time = int(start_time + (60 * COOKIE_TTL))
 
-        cookie = self.encryptCookie(start_time, end_time, login)
+        # For a persistent cookie, set the expires date to the future
+        if request.get(PERSIST_COOKIE):
+            expires = start_time + PERSIST_TTL
+            end_time = int(expires)
+            options['expires'] = time.strftime("%a, %d %b %Y %T GMT", time.gmtime(expires))
+            persistent = 1
+        else:
+            end_time = int(start_time + (60 * COOKIE_TTL))
+            persistent = 0
 
-        response.setCookie('.ASPXAUTH', cookie, quoted=False, path='/', domain=COOKIE_DOMAIN)
+        # Encrypt the end_time into the cookie
+        cookie = self.encryptCookie(start_time, end_time, login, persistent=persistent)
+
+        response.setCookie('.ASPXAUTH', cookie, **options)
 
     def resetCredentials(self, request, response):
         """ Raise unauthorized to tell browser to clear credentials. """
