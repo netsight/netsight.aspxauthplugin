@@ -27,7 +27,7 @@ class PASLayer:
 
         factory = sandbox.manage_addProduct['PluggableAuthService']
         factory.addPluggableAuthService(REQUEST=None)
-        
+
         pas = sandbox.acl_users
         netsight.aspxauthplugin.install.manage_add_aspxauthplugin(pas, 'aspxauth')
 
@@ -50,7 +50,7 @@ class TestASPXAuth(ZopeTestCase.ZopeTestCase):
     def setUp(self):
         # you'll want to use this to set up anything you need for your tests
         # below
-        pass
+        netsight.aspxauthplugin.plugin.VITAE = False
 
     def test_ReadFormsAuthTicketString(self):
         data = '\x01/\x00'
@@ -126,6 +126,52 @@ class TestASPXAuth(ZopeTestCase.ZopeTestCase):
 
         self.assertEqual(plugin.unpackData(data), (start_time, end_time, username, version, 0, '', '/'))
 
+    def test_rebuild_persistent_cookie(self):
+        plugin = self.layer.pas.aspxauth
+        plugin.validation_key = """07B6387D1DED6BF193EDD726B4ADFD6B92EDA470DDF639D4B78110CA797DCED426BECF322B9FBCC5E7C3FDA2E7BA28169611B1ACD1E7F063ABF17ECDC30AD482"""
+        plugin.decryption_key = """CFE45C8F9D17D68B71DAB98158E1F78E5AC05D6C5A7184BD1BF26E6E36FA5973"""
+
+        start_time = int(time.time())
+        end_time = int(start_time + (60 * 20) )
+        username = 'notmatth@netsight.co.uk'
+        version = 2
+        persistent = 1
+        userdata = None
+        path = None
+
+        cookie = plugin.encryptCookie(start_time, end_time, username, version, persistent, userdata, path)
+        sig, data = plugin.decodeCookie(cookie)
+        data = plugin.decryptData(data)
+
+        self.assertEqual(plugin.unpackData(data), (start_time, end_time, username, version, 1, '', '/'))
+
+    def test_set_persistent_cookie(self):
+        """ Make sure that a persistent cookie is set when remember me is set on the request """
+        plugin = self.layer.pas.aspxauth
+        plugin.validation_key = """07B6387D1DED6BF193EDD726B4ADFD6B92EDA470DDF639D4B78110CA797DCED426BECF322B9FBCC5E7C3FDA2E7BA28169611B1ACD1E7F063ABF17ECDC30AD482"""
+        plugin.decryption_key = """CFE45C8F9D17D68B71DAB98158E1F78E5AC05D6C5A7184BD1BF26E6E36FA5973"""
+
+        from netsight.aspxauthplugin.plugin import PERSIST_COOKIE
+        plugin.REQUEST[PERSIST_COOKIE] = 1
+
+        def mytime():
+            return 1000000000
+        plugin.time_time = mytime
+
+        plugin.updateCredentials(
+            plugin.REQUEST,
+            plugin.REQUEST.RESPONSE,
+            'aafc752c-8247-4f44-938c-a1ea00be2070',
+            None
+        )
+
+        cookie = plugin.REQUEST.RESPONSE.cookies.get('.ASPXAUTH')
+        # There should be an expires value
+        self.assertTrue('expires' in cookie)
+
+        sig, data = plugin.decodeCookie(cookie['value'])
+        data = plugin.decryptData(data)
+        self.assertEqual(1, plugin.unpackData(data)[4])
 
     def test_auth_pass1(self):
         from netsight.aspxauthplugin import plugin
@@ -172,7 +218,7 @@ class TestASPXAuth(ZopeTestCase.ZopeTestCase):
         plugin.validation_key = """07B6387D1DED6BF193EDD726B4ADFD6B92EDA470DDF639D4B78110CA797DCED426BECF322B9FBCC5E7C3FDA2E7BA28169611B1ACD1E7F063ABF17ECDC30AD482"""
         plugin.decryption_key = """CFE45C8F9D17D68B71DAB98158E1F78E5AC05D6C5A7184BD1BF26E6E36FA5973"""
 
-        cookie = """31EBBD78D6F27972394A513A161AD0362E7906830460CE7D3F44E47B2F1AF63DD43E02EB22259E4AF342B232768D6701C9395AF42448E5D149FE8AE2E4D355E9F43A9B60E1A30C0282F9ED470D8037F3B9D1D965293BED7C6156672527A94B22F24039C3F7CA6ECFF6D50A0BFFB38C0E03FF9644092FB5F8FD6E6292AA7A49B5FF603456DE4EA041F785CC163A92C34937FDE018""" 
+        cookie = """31EBBD78D6F27972394A513A161AD0362E7906830460CE7D3F44E47B2F1AF63DD43E02EB22259E4AF342B232768D6701C9395AF42448E5D149FE8AE2E4D355E9F43A9B60E1A30C0282F9ED470D8037F3B9D1D965293BED7C6156672527A94B22F24039C3F7CA6ECFF6D50A0BFFB38C0E03FF9644092FB5F8FD6E6292AA7A49B5FF603456DE4EA041F785CC163A92C34937FDE018"""
 
         self.assertEqual(plugin.authenticateCredentials({'cookie': cookie, 'plugin': plugin.getId()}), None)
 
@@ -181,7 +227,7 @@ class TestASPXAuth(ZopeTestCase.ZopeTestCase):
         plugin.validation_key = """07B6387D1DED6BF193EDD726B4ADFD6B92EDA470DDF639D4B78110CA797DCED426BECF322B9FBCC5E7C3FDA2E7BA28169611B1ACD1E7F063ABF17ECDC30AD483"""
         plugin.decryption_key = """CFE45C8F9D17D68B71DAB98158E1F78E5AC05D6C5A7184BD1BF26E6E36FA5973"""
 
-        cookie = """31EBBD78D6F27972394A513A161AD0362E7906830460CE7D3F44E47B2F1AF63DD43E02EB22259E4AF342B232768D6701C9395AF42448E5D149FE8AE2E4D355E9F43A9B60E1A30C0282F9ED470D8037F3B9D1D965293BED7C6156672527A94B22F24039C3F7CA6ECFF6D50A0BFFB38C0E03FF9644092FB5F8FD6E6292AA7A49B5FF603456DE4EA041F785CC163A92C34937FDE017""" 
+        cookie = """31EBBD78D6F27972394A513A161AD0362E7906830460CE7D3F44E47B2F1AF63DD43E02EB22259E4AF342B232768D6701C9395AF42448E5D149FE8AE2E4D355E9F43A9B60E1A30C0282F9ED470D8037F3B9D1D965293BED7C6156672527A94B22F24039C3F7CA6ECFF6D50A0BFFB38C0E03FF9644092FB5F8FD6E6292AA7A49B5FF603456DE4EA041F785CC163A92C34937FDE017"""
 
         self.assertEqual(plugin.authenticateCredentials({'cookie': cookie, 'plugin': plugin.getId()}), None)
 
@@ -190,6 +236,6 @@ class TestASPXAuth(ZopeTestCase.ZopeTestCase):
         plugin.validation_key = """07B6387D1DED6BF193EDD726B4ADFD6B92EDA470DDF639D4B78110CA797DCED426BECF322B9FBCC5E7C3FDA2E7BA28169611B1ACD1E7F063ABF17ECDC30AD482"""
         plugin.decryption_key = """CFE45C8F9D17D68B71DAB98158E1F78E5AC05D6C5A7184BD1BF26E6E36FA5972"""
 
-        cookie = """31EBBD78D6F27972394A513A161AD0362E7906830460CE7D3F44E47B2F1AF63DD43E02EB22259E4AF342B232768D6701C9395AF42448E5D149FE8AE2E4D355E9F43A9B60E1A30C0282F9ED470D8037F3B9D1D965293BED7C6156672527A94B22F24039C3F7CA6ECFF6D50A0BFFB38C0E03FF9644092FB5F8FD6E6292AA7A49B5FF603456DE4EA041F785CC163A92C34937FDE017""" 
+        cookie = """31EBBD78D6F27972394A513A161AD0362E7906830460CE7D3F44E47B2F1AF63DD43E02EB22259E4AF342B232768D6701C9395AF42448E5D149FE8AE2E4D355E9F43A9B60E1A30C0282F9ED470D8037F3B9D1D965293BED7C6156672527A94B22F24039C3F7CA6ECFF6D50A0BFFB38C0E03FF9644092FB5F8FD6E6292AA7A49B5FF603456DE4EA041F785CC163A92C34937FDE017"""
 
         self.assertEqual(plugin.authenticateCredentials({'cookie': cookie, 'plugin': plugin.getId()}), None)
