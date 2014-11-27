@@ -1,6 +1,10 @@
 Changelog
 =========
 
+1.0.4 (2014-11-28)
+------------------
+- Make the cookie persistent if a variable has been set on the request
+
 1.0.3 (2014-02-25)
 ------------------
 - Added in a 5 minute leeway on accepting the start time on tickets, to deal with clock skew
